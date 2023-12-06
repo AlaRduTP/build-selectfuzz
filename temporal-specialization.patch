@@ -1,0 +1,138 @@
+diff --git a/SVF/build.sh b/SVF/build.sh
+index 084527f..481172a 100755
+--- a/SVF/build.sh
++++ b/SVF/build.sh
+@@ -1,35 +1,15 @@
+-#  !bash
+-# type './build.sh'  for release build
+-# type './build.sh debug'  for debug build
++#!/bin/bash
+ 
+-#########
+-# Please change the following home directories of your LLVM builds
+-########
+-LLVMRELEASE=/home/ysui/llvm-7.0.0/llvm-7.0.0.obj
+-LLVMDEBUG=/home/ysui/llvm-7.0.0/llvm-7.0.0.dbg
+-
+-if [[ $1 == 'debug' ]]
+-then
+-BuildTY='Debug'
+-export LLVM_DIR=$LLVMDEBUG
+-else
+-BuildTY='Release'
+-export LLVM_DIR=$LLVMRELEASE
+-fi
++set -eux
+ 
+ export PATH=$LLVM_DIR/bin:$PATH
++
++BuildTY='Release'
+ Build=$BuildTY'-build'
+ 
+ rm -rf $Build
+ mkdir $Build
+ cd $Build
+ 
+-if [[ $1 == 'debug' ]]
+-then
+-cmake -D CMAKE_BUILD_TYPE:STRING=Debug ../
+-else
+-cmake ../
+-fi
+ cmake ../
+ make -j4
+-
+diff --git a/SVF/lib/MemoryModel/PointerAnalysis.cpp b/SVF/lib/MemoryModel/PointerAnalysis.cpp
+index d03010c..96da021 100644
+--- a/SVF/lib/MemoryModel/PointerAnalysis.cpp
++++ b/SVF/lib/MemoryModel/PointerAnalysis.cpp
+@@ -42,6 +42,7 @@
+ #include <string>
+ #include <cstddef>
+ #include <algorithm>
++#include <iostream>
+ 
+ using namespace llvm;
+ using namespace analysisUtil;
+@@ -549,6 +550,8 @@ void BVDataPTAImpl::dumpAllPts() {
+  */
+ void PointerAnalysis::printIndCSTargets(const llvm::CallSite cs, const FunctionSet& targets)
+ {
++    std::ofstream indirect("./indirect.txt", std::ofstream::out | std::ofstream::app);
++
+     llvm::outs() << "\nNodeID: " << getFunPtr(cs);
+     llvm::outs() << "\nCallSite: ";
+     cs.getInstruction()->print(llvm::outs());
+@@ -561,6 +564,7 @@ void PointerAnalysis::printIndCSTargets(const llvm::CallSite cs, const FunctionS
+         for (; fit != feit; ++fit) {
+             const llvm::Function* callee = *fit;
+             llvm::outs() << "\n\t" << callee->getName();
++            indirect << analysisUtil::getSourceLoc(cs.getInstruction()) << " " << analysisUtil::getSourceLocOfFunction(callee) << "\n";
+         }
+     }
+     else {
+@@ -568,6 +572,7 @@ void PointerAnalysis::printIndCSTargets(const llvm::CallSite cs, const FunctionS
+     }
+ 
+     llvm::outs() << "\n";
++    indirect.close();
+ }
+ 
+ /*!
+diff --git a/SVF/lib/Util/AnalysisUtil.cpp b/SVF/lib/Util/AnalysisUtil.cpp
+index a69a808..3195117 100644
+--- a/SVF/lib/Util/AnalysisUtil.cpp
++++ b/SVF/lib/Util/AnalysisUtil.cpp
+@@ -289,8 +289,13 @@ std::string analysisUtil::getSourceLocOfFunction(const llvm::Function *F)
+     * looks like the relevant	
+     */
+     if (DISubprogram *SP =  F->getSubprogram()) {
+-        if (SP->describes(F))
+-            rawstr << "in line: " << SP->getLine() << " file: " << SP->getFilename();
++        if (SP->describes(F)) {
++            std::string filename = SP->getFilename().str();
++            std::size_t found = filename.find_last_of("/\\");
++            if (found != std::string::npos)
++                filename = filename.substr(found + 1);
++            rawstr << filename << "," << SP->getLine();
++        }
+     }
+     return rawstr.str();
+ }
+@@ -308,7 +313,11 @@ std::string analysisUtil::getSourceLoc(const Value* val) {
+             for (DbgInfoIntrinsic *DII : FindDbgAddrUses(const_cast<Instruction*>(inst))) {
+                 if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(DII)) {
+                     DIVariable *DIVar = cast<DIVariable>(DDI->getVariable());
+-                    rawstr << "ln: " << DIVar->getLine() << " fl: " << DIVar->getFilename();
++                    std::string filename = DIVar->getFilename().str();
++                    std::size_t found = filename.find_last_of("/\\");
++                    if (found != std::string::npos)
++                        filename = filename.substr(found + 1);
++                    rawstr << filename << "," << DIVar->getLine();
+                     break;
+                 }
+             }
+@@ -318,7 +327,9 @@ std::string analysisUtil::getSourceLoc(const Value* val) {
+             unsigned Line = Loc->getLine();
+             StringRef File = Loc->getFilename();
+             //StringRef Dir = Loc.getDirectory();
+-            rawstr << "ln: " << Line << " fl: " << File;
++            std::size_t found = File.find_last_of("/\\");
++            if (found != std::string::npos)
++                File = File.substr(found + 1);
+         }
+     }
+     else if (const Argument* argument = dyn_cast<Argument>(val)) {
+@@ -343,7 +354,11 @@ std::string analysisUtil::getSourceLoc(const Value* val) {
+                     DIGlobalVariable * DGV = GV->getVariable();
+ 
+                     if(DGV->getName() == gvar->getName()){
+-                        rawstr << "ln: " << DGV->getLine() << " fl: " << DGV->getFilename();
++                        std::string filename = DGV->getFilename().str();
++                        std::size_t found = filename.find_last_of("/\\");
++                        if (found != std::string::npos)
++                            filename = filename.substr(found + 1);
++                        rawstr << filename << "," << DGV->getLine();
+                     }
+ 
+                 }

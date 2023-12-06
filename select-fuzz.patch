@@ -1,0 +1,100 @@
+diff --git a/scripts/fuzz/libming-CVE-2016-9827.sh b/scripts/fuzz/libming-CVE-2016-9827.sh
+index 68fe0ad..a17a81b 100755
+--- a/scripts/fuzz/libming-CVE-2016-9827.sh
++++ b/scripts/fuzz/libming-CVE-2016-9827.sh
+@@ -1,27 +1,37 @@
++#!/bin/bash
++set -eux
++
++# export AFLGO=/home/alardutp/fuzzers/SelectFuzz
++# export BUILD_TOOLS=$AFLGO/build-tools
++# export PATH=$BUILD_TOOLS/bin:$PATH
++
++# mkdir -p $BUILD_TOOLS/lib/bfd-plugins
++# sudo cp $BUILD_TOOLS/lib/LLVMgold.so $BUILD_TOOLS/lib/bfd-plugins
++# sudo cp $BUILD_TOOLS/lib/libLTO.so $BUILD_TOOLS/lib/bfd-plugins
++
++export LC_CTYPE=C
++
+ rm -rf libming-CVE-2016-9827
+ git clone https://github.com/libming/libming.git libming-CVE-2016-9827
+-cd libming-CVE-2016-9827/; git checkout e397b5e
++cd libming-CVE-2016-9827; git checkout e397b5e
+ rm -rf obj-aflgo
+ mkdir obj-aflgo; mkdir obj-aflgo/temp
+ export SUBJECT=$PWD; export TMP_DIR=$PWD/obj-aflgo/temp
+ export CC=$AFLGO/afl-clang-fast; export CXX=$AFLGO/afl-clang-fast++
+-export LDFLAGS=-lpthread
+-export ADDITIONAL="-targets=$TMP_DIR/BBtargets.txt -outdir=$TMP_DIR -flto -fuse-ld=gold -Wl,-plugin-opt=save-temps"
++export LDFLAGS="-lpthread -fuse-ld=gold"
++export ADDITIONAL="-targets=$TMP_DIR/BBtargets.txt -outdir=$TMP_DIR -flto -Wl,-plugin-opt=save-temps"
+ echo $'outputtxt.c:143' > $TMP_DIR/BBtargets.txt
+ echo $'outputtxt.c:144' > $TMP_DIR/real.txt
+ ./autogen.sh;
+-cd obj-aflgo; CFLAGS="$ADDITIONAL" CXXFLAGS="$ADDITIONAL" ../configure --disable-shared --prefix=`pwd`
++cd obj-aflgo; CFLAGS="$ADDITIONAL" CXXFLAGS="$ADDITIONAL" ../configure --disable-freetype --disable-shared --prefix=`pwd`
+ make clean; make
+ cat $TMP_DIR/BBnames.txt | rev | cut -d: -f2- | rev | sort | uniq > $TMP_DIR/BBnames2.txt && mv $TMP_DIR/BBnames2.txt $TMP_DIR/BBnames.txt
+ cat $TMP_DIR/BBcalls.txt | sort | uniq > $TMP_DIR/BBcalls2.txt && mv $TMP_DIR/BBcalls2.txt $TMP_DIR/BBcalls.txt
+-cd util; 
+-$AFLGO/scripts/genDistance.sh $SUBJECT $TMP_DIR listswf
+-cd -; CFLAGS="-distance=$TMP_DIR/distance.cfg.txt" CXXFLAGS="-distance=$TMP_DIR/distance.cfg.txt" ../configure --disable-shared --prefix=`pwd`
++cd util; $AFLGO/scripts/genDistance.sh $SUBJECT $TMP_DIR listswf
++cd -; CFLAGS="-distance=$TMP_DIR/distance.cfg.txt" CXXFLAGS="-distance=$TMP_DIR/distance.cfg.txt" ../configure --disable-freetype --disable-shared --prefix=`pwd`
+ make clean; make
+-rm -rf in out
+-mkdir in; 
++rm -rf in out; mkdir in
+ wget -P in --no-check-certificate http://condor.depaul.edu/sjost/hci430/flash-examples/swf/bumble-bee1.swf
+ echo ' ' >in/tmp.swf
+-#$AFLGO/afl-fuzz -m none -z exp -c 45m -i in -o out -d -- @@
+ $AFLGO/afl-fuzz -i in -o out -m none -t 9999 -d -- ./util/listswf @@
+ 
+diff --git a/scripts/genDistance.sh b/scripts/genDistance.sh
+index 82b276e..5eaf4ee 100755
+--- a/scripts/genDistance.sh
++++ b/scripts/genDistance.sh
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++set -eux
++
+ if [ $# -lt 2 ]; then
+   echo "Usage: $0 <binaries-directory> <temporary-directory> [fuzzer-name]"
+   echo ""
+@@ -7,7 +9,6 @@ fi
+ 
+ BINARIES=$(readlink -e $1)
+ TMPDIR=$(readlink -e $2)
+-AFLGO="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ fuzzer=""
+ if [ $# -eq 3 ]; then
+   fuzzer=$(find $BINARIES -name "$3.0.0.*.bc" | rev | cut -d. -f5- | rev)
+@@ -65,7 +66,7 @@ if [ $RESUME -le $STEP ]; then
+       while ! opt -dot-callgraph $binary.0.0.*.bc >/dev/null 2> $TMPDIR/step${STEP}.log ; do
+         echo -e "\e[93;1m[!]\e[0m Could not generate call graph. Repeating.."
+       done
+-      opt -load /selectfuzz/libDFUZZPASS.so -DFUZZPASS $binary.0.0.preopt.bc -targets=$TMPDIR/BBtargets.txt -outdir=$TMPDIR
++      opt -load $AFLGO/libDFUZZPASS.so -DFUZZPASS $binary.0.0.preopt.bc -targets=$TMPDIR/BBtargets.txt -outdir=$TMPDIR
+ 
+       #Remove repeated lines and rename
+       awk '!a[$0]++' callgraph.dot > callgraph.$(basename $binary).dot
+@@ -81,8 +82,8 @@ if [ $RESUME -le $STEP ]; then
+     #crtDir = $PWD
+     #pushd /temporal-specialization/SVF
+      
+-    rm ./indirect.txt
+-    /selectfuzz/temporal-specialization/SVF/Release-build/bin/wpa -print-fp -ander -dump-callgraph $fuzzer.0.0.preopt.bc
++    rm -f ./indirect.txt
++    $AFLGO/temporal-specialization/SVF/Release-build/bin/wpa -print-fp -ander -dump-callgraph $fuzzer.0.0.preopt.bc
+     mv ./indirect.txt $TMPDIR/
+     
+     #cp /aflgo/scripts/fuzz/indirect.txt $TMPDIR/
+@@ -93,7 +94,7 @@ if [ $RESUME -le $STEP ]; then
+       echo -e "\e[93;1m[!]\e[0m Could not generate call graph. Repeating.."
+     done
+ 
+-    opt -load /selectfuzz/libDFUZZPASS.so -DFUZZPASS $fuzzer.0.0.preopt.bc -targets=$TMPDIR/BBtargets.txt -outdir=$TMPDIR
++    opt -load $AFLGO/libDFUZZPASS.so -DFUZZPASS $fuzzer.0.0.preopt.bc -targets=$TMPDIR/BBtargets.txt -outdir=$TMPDIR
+ 
+     #Remove repeated lines and rename
+     awk '!a[$0]++' callgraph.dot > callgraph.1.dot
