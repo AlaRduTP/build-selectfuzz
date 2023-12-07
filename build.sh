@@ -2,14 +2,16 @@
 
 set -eux
 
-SF_DEP_PACKAGES="build-essential make cmake git texinfo bison flex libtool wget"
+SCRIPTS_DIR=$(dirname $(readlink -f "$BASH_SOURCE"))
+DEP_PACKAGES="build-essential make cmake git texinfo bison flex libtool wget"
 
 sudo apt-get update
-sudo apt-get install -y $SF_DEP_PACKAGES
+sudo apt-get install -y $DEP_PACKAGES
 
 git clone https://github.com/cuhk-seclab/SelectFuzz.git
 cd SelectFuzz
-git apply ../select-fuzz.patch
+git checkout 6da35e0
+git apply $SCRIPTS_DIR/select-fuzz.patch
 
 export AFLGO=$PWD
 
@@ -20,7 +22,7 @@ cd $BUILD_TOOLS
 git clone git://sourceware.org/git/binutils-gdb.git binutils
 cd binutils
 git checkout binutils-2_26_1
-git apply ../../../binutils.patch
+git apply $SCRIPTS_DIR/binutils.patch
 
 mkdir build
 cd build
@@ -32,7 +34,7 @@ cd $BUILD_TOOLS
 git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
 git checkout llvmorg-4.0.0
-git apply ../../../llvm-project.patch
+git apply $SCRIPTS_DIR/llvm-project.patch
 
 mkdir build
 cd build
@@ -62,7 +64,7 @@ make install
 export LLVM_DIR="$PWD/../install"
 
 cd $AFLGO/temporal-specialization
-git apply ../../temporal-specialization.patch
+git apply $SCRIPTS_DIR/temporal-specialization.patch
 cd SVF
 ./build.sh
 
